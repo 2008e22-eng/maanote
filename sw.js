@@ -17,13 +17,13 @@ const APP_SHELL = [
   './apple-touch-icon.png',
   './version.json',
   './admin.html',
-  './admin.css?v=0.9-stage14.1-prod',
-  './admin.js?v=0.9-stage14.1-prod',
+  './admin.css?v=0.9-stage14-prod',
+  './admin.js?v=0.9-stage14-prod',
   './common-seed.json',
   './common-data.json',
   './migrate-v96.html',
-  './migrate-v96.css?v=0.9-stage14.1-prod',
-  './migrate-v96.js?v=0.9-stage14.1-prod'
+  './migrate-v96.css?v=0.9-stage14-prod',
+  './migrate-v96.js?v=0.9-stage14-prod'
 ];
 
 self.addEventListener('install', event => {

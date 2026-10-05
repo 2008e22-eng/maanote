@@ -182,6 +182,7 @@
     settings:{ mode:'personal_management', homeEventFilter:'all', headerImage:null, previewDate:null, imageQuality:'standard', fontSize:'standard', rememberEventFilter:true, lastEventFilter:'all', driveBackupMode:null },
     settingsReturnScreen:'home',
     recoveredEmergencyBackup:false,
+    hadStoredSettings:false,
     drive:{accessToken:null,expiresAt:0,tokenClient:null,file:null,busy:false,error:null,needsReconnect:false},
     db:null
   };
@@ -482,6 +483,7 @@
     const plans=IS_VIEW_BUILD?[]:await idbGetAll('userEventPlans');
     state.userPlans=Object.fromEntries(plans.filter(p=>!p.deleted).map(p=>[p.eventId,p]));
     const settings=await idbGetAll('settings');
+    state.hadStoredSettings=settings.length>0;
     for(const row of settings) state.settings[row.key]=row.value;
     if(IS_VIEW_BUILD) state.settings.mode='view_only';
     applyFontSize(state.settings.fontSize||'standard');
@@ -2053,6 +2055,86 @@
     }
   }
 
+  function shouldShowNewDeviceLogin(){
+    return !IS_VIEW_BUILD
+      && DRIVE_SYNC_ENABLED
+      && !state.hadStoredSettings
+      && !state.settings.driveBackupMode
+      && meaningfulPersonalCount()===0;
+  }
+
+  function showStartupLoginGate(){
+    if(!shouldShowNewDeviceLogin()) return;
+
+    sheetRoot.innerHTML=`<div class="startup-login-backdrop">
+      <div class="startup-login-card" data-startup-login>
+        <div class="startup-login-brand">MaaNote <span>♥</span></div>
+        <div class="startup-login-title">MaaNoteをはじめる</div>
+        <div class="startup-login-text">別の端末で使っていたデータがある場合は、同じGoogleアカウントでログインするとGoogle Driveのバックアップから引き継げます。</div>
+
+        <button class="startup-login-primary" data-startup-google>
+          <span class="startup-google-mark">G</span>
+          <span><strong>Googleでログイン</strong><small>データを引き継ぐ・自動バックアップ</small></span>
+        </button>
+
+        <div class="startup-login-divider"><span>または</span></div>
+
+        <button class="startup-login-secondary" data-startup-new>
+          <strong>新しく入力を始める</strong>
+          <small>この端末だけに保存して開始</small>
+        </button>
+
+        <button class="startup-login-view" data-startup-view>情報を見るだけ</button>
+
+        <div class="startup-login-note">Googleログインは個人データのバックアップ／復元にだけ使用します。MaaNoteが通常のGoogle Driveファイルを見る権限は要求しません。</div>
+      </div>
+    </div>`;
+
+    const googleBtn=sheetRoot.querySelector('[data-startup-google]');
+    googleBtn.onclick=async()=>{
+      if(!navigator.onLine){
+        showToast('Googleログインはオンライン時に利用できます');
+        return;
+      }
+      googleBtn.disabled=true;
+      const original=googleBtn.innerHTML;
+      googleBtn.innerHTML='<span class="startup-google-mark">G</span><span><strong>Googleを開いています…</strong><small>アカウントを選択してください</small></span>';
+      try{
+        await connectDrive({enableAuto:true,firstSetup:true});
+        // If no cloud backup existed, connectDrive does not replace the gate.
+        // Successful authorization means auto mode is now stored.
+        if(state.settings.driveBackupMode==='auto' && driveConnected() && sheetRoot.querySelector('[data-startup-login]')){
+          closeSheet();
+          render();
+        }
+      }finally{
+        const btn=sheetRoot.querySelector('[data-startup-google]');
+        if(btn){
+          btn.disabled=false;
+          btn.innerHTML=original;
+        }
+      }
+    };
+
+    sheetRoot.querySelector('[data-startup-new]').onclick=async()=>{
+      await saveSetting('mode','personal_management');
+      await saveSetting('driveBackupMode','local');
+      state.hadStoredSettings=true;
+      closeSheet();
+      render();
+      showToast('この端末だけに保存して開始します');
+    };
+
+    sheetRoot.querySelector('[data-startup-view]').onclick=async()=>{
+      await saveSetting('mode','view_only');
+      await saveSetting('driveBackupMode',null);
+      state.hadStoredSettings=true;
+      closeSheet();
+      render();
+      showToast('見るだけモードで開始します');
+    };
+  }
+
   function maybeOfferBackupChoice(){
     if(IS_VIEW_BUILD || !DRIVE_SYNC_ENABLED || state.settings.mode!=='personal_management' || state.settings.driveBackupMode) return;
     showSheet(`<div class="sheet-head"><div class="sheet-title">データのバックアップ</div></div>
@@ -2694,7 +2776,8 @@
     render();
     if(!IS_VIEW_BUILD && DRIVE_SYNC_ENABLED){
       setTimeout(()=>{
-        if(state.settings.driveBackupMode==='auto') resumeAutoDriveBackup();
+        if(shouldShowNewDeviceLogin()) showStartupLoginGate();
+        else if(state.settings.driveBackupMode==='auto') resumeAutoDriveBackup();
         else maybeOfferBackupChoice();
       },350);
     }
