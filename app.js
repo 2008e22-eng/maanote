@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.9-stage14.1-prod';
-  const APP_VERSION_LABEL = 'v0.9 Stage 14.1 PROD';
+  const APP_VERSION = '0.9-stage15-prod';
+  const APP_VERSION_LABEL = 'v0.9 Stage 15 PROD';
   const CONFIG = globalThis.MAANOTE_CONFIG || {};
   const API_BASE = String(CONFIG.API_BASE||'').replace(/\/$/,'');
   const IS_VIEW_BUILD = location.pathname.includes('/view/');
@@ -13,12 +13,12 @@
   const APP_DB_NAME = IS_VIEW_BUILD ? 'MaaNoteProdViewDB' : 'MaaNoteProdDB';
   const EMERGENCY_PREFIX = IS_VIEW_BUILD ? 'MaaNoteProdView' : 'MaaNoteProd';
   const SHARED_LOCAL_COMMON_KEY='MaaNoteProdSharedCommonPreviewV1';
-  const DRIVE_CLIENT_ID=String(CONFIG.GOOGLE_CLIENT_ID||'').trim();
-  const DRIVE_SYNC_ENABLED=!IS_VIEW_BUILD && !!CONFIG.DRIVE_SYNC_ENABLED && !!DRIVE_CLIENT_ID;
-  const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.appdata';
+  const DRIVE_SYNC_ENABLED=!IS_VIEW_BUILD && !!CONFIG.DRIVE_SYNC_ENABLED && !!API_BASE;
   const DRIVE_FILE_NAME='MaaNote_prod_personal_backup_v1.json';
   const PERSONAL_STORES=['userEventPlans','settings','todos','personalSchedules','travelBookings','setlists','talkMemos','migrationInfo','legacyData'];
   const DRIVE_DIRTY_KEY='MaaNoteProdDriveDirtyV1';
+  const DRIVE_BACKEND_SESSION_KEY='MaaNoteProdDriveBackendSessionV1';
+  const DRIVE_FIRST_SETUP_KEY='MaaNoteProdDriveFirstSetupV1';
   const DRIVE_AUTO_DELAY=9000;
   let driveAutoTimer=null;
   let driveAutoBackupSuspended=false;
@@ -183,7 +183,7 @@
     settingsReturnScreen:'home',
     recoveredEmergencyBackup:false,
     hadStoredSettings:false,
-    drive:{accessToken:null,expiresAt:0,tokenClient:null,file:null,busy:false,error:null,needsReconnect:false},
+    drive:{file:null,busy:false,error:null,needsReconnect:false,user:null,statusChecked:false},
     db:null
   };
 
@@ -2039,15 +2039,15 @@
 
   async function resumeAutoDriveBackup(){
     if(!isAutoDriveMode() || !navigator.onLine) return;
+    if(!driveConnected()){
+      state.drive.needsReconnect=true;
+      if(state.screen==='settings') renderSettings();
+      return;
+    }
     try{
-      if(!driveConnected()){
-        // Try to resume without asking for consent again.
-        // Browsers may block this; in that case Settings shows a one-tap reconnect.
-        await requestDriveToken({prompt:''});
-      }
+      await findDriveBackup();
       state.drive.needsReconnect=false;
       driveReconnectToastShown=false;
-      await findDriveBackup();
       if(driveBackupDirty()) scheduleAutoDriveBackup(1200);
     }catch(_){
       state.drive.needsReconnect=true;
@@ -2086,7 +2086,7 @@
 
         <button class="startup-login-view" data-startup-view>情報を見るだけ</button>
 
-        <div class="startup-login-note">Googleログインは個人データのバックアップ／復元にだけ使用します。MaaNoteが通常のGoogle Driveファイルを見る権限は要求しません。</div>
+        <div class="startup-login-note">Googleログインは個人データのバックアップ／復元にだけ使用します。最初の認証後はMaaNote側で接続を維持するため、ページ更新やGoogleの短いアクセストークン期限ごとにログインし直す必要はありません。</div>
       </div>
     </div>`;
 
@@ -2179,84 +2179,103 @@
     };
   }
 
-  function waitForGoogleIdentity(timeoutMs=8000){
-    return new Promise((resolve,reject)=>{
-      if(globalThis.google?.accounts?.oauth2) return resolve();
-      const started=Date.now();
-      const timer=setInterval(()=>{
-        if(globalThis.google?.accounts?.oauth2){
-          clearInterval(timer);
-          resolve();
-        }else if(Date.now()-started>timeoutMs){
-          clearInterval(timer);
-          reject(new Error('Googleログインを読み込めませんでした'));
-        }
-      },100);
-    });
+  function driveSession(){
+    try{return localStorage.getItem(DRIVE_BACKEND_SESSION_KEY)||''}catch(_){return ''}
+  }
+
+  function saveDriveSession(token){
+    try{
+      if(token) localStorage.setItem(DRIVE_BACKEND_SESSION_KEY,token);
+      else localStorage.removeItem(DRIVE_BACKEND_SESSION_KEY);
+    }catch(_){}
   }
 
   function driveConnected(){
-    return !!(state.drive.accessToken && state.drive.expiresAt>Date.now()+30000);
+    return !!driveSession() && !state.drive.needsReconnect;
   }
 
-  async function requestDriveToken({prompt=''}={}){
-    if(!DRIVE_SYNC_ENABLED) throw new Error('Google Drive連携が未設定です');
-    if(driveConnected()) return state.drive.accessToken;
-    await waitForGoogleIdentity();
-
-    if(!state.drive.tokenClient){
-      state.drive.tokenClient=google.accounts.oauth2.initTokenClient({
-        client_id:DRIVE_CLIENT_ID,
-        scope:DRIVE_SCOPE,
-        callback:()=>{}
-      });
-    }
-
-    return await new Promise((resolve,reject)=>{
-      state.drive.tokenClient.callback=resp=>{
-        if(resp?.error){
-          reject(new Error(resp.error_description||resp.error));
-          return;
-        }
-        state.drive.accessToken=resp.access_token;
-        state.drive.expiresAt=Date.now()+(Number(resp.expires_in||3600)*1000);
-        state.drive.error=null;
-        resolve(state.drive.accessToken);
-      };
-      state.drive.tokenClient.error_callback=err=>reject(new Error(err?.type||'Google Driveへの接続をキャンセルしました'));
-      state.drive.tokenClient.requestAccessToken({prompt});
-    });
-  }
-
-  async function driveFetch(url,options={}){
-    const token=await requestDriveToken({prompt:''});
+  async function driveApi(path,options={}){
+    const token=driveSession();
+    if(!token) throw Object.assign(new Error('Google Driveへログインしてください'),{status:401});
     const headers={...(options.headers||{}),Authorization:`Bearer ${token}`};
-    const res=await fetch(url,{...options,headers});
+    const res=await fetch(`${API_BASE}${path}`,{...options,headers});
     if(res.status===401){
-      state.drive.accessToken=null;
-      state.drive.expiresAt=0;
-      throw new Error('Google Driveの接続期限が切れました。もう一度接続してください');
+      saveDriveSession('');
+      state.drive.needsReconnect=true;
+      state.drive.user=null;
+      throw Object.assign(new Error('Google Driveへのログインが必要です'),{status:401});
     }
     if(!res.ok){
       const detail=await res.json().catch(()=>null);
-      throw new Error(detail?.error?.message||`Google Drive API ${res.status}`);
+      throw Object.assign(new Error(detail?.error||`バックアップAPI ${res.status}`),{status:res.status});
     }
     return res;
   }
 
-  async function findDriveBackup(){
-    const q=`name = '${DRIVE_FILE_NAME}' and trashed = false`;
-    const params=new URLSearchParams({
-      spaces:'appDataFolder',
-      q,
-      fields:'files(id,name,modifiedTime,size)',
-      orderBy:'modifiedTime desc',
-      pageSize:'10'
+  async function exchangeDriveLoginTicket(code){
+    const res=await fetch(`${API_BASE}/api/drive/session/exchange`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code})
     });
-    const res=await driveFetch(`https://www.googleapis.com/drive/v3/files?${params}`);
+    if(!res.ok){
+      const detail=await res.json().catch(()=>null);
+      throw new Error(detail?.error||'Googleログインを完了できませんでした');
+    }
     const data=await res.json();
-    state.drive.file=(data.files||[])[0]||null;
-    return state.drive.file;
+    if(!data.sessionToken) throw new Error('ログインセッションを作成できませんでした');
+    saveDriveSession(data.sessionToken);
+    state.drive.user=data.user||null;
+    state.drive.needsReconnect=false;
+    return data;
+  }
+
+  async function handleDriveAuthReturn(){
+    if(IS_VIEW_BUILD || !DRIVE_SYNC_ENABLED) return null;
+    const url=new URL(location.href);
+    const code=url.searchParams.get('drive_auth');
+    const error=url.searchParams.get('drive_auth_error');
+    if(!code && !error) return null;
+
+    url.searchParams.delete('drive_auth');
+    url.searchParams.delete('drive_auth_error');
+    history.replaceState(null,'',url.pathname+(url.search?url.search:'')+url.hash);
+
+    if(error){
+      showToast('Googleログインを完了できませんでした');
+      return {connected:false,error};
+    }
+
+    const firstSetup=localStorage.getItem(DRIVE_FIRST_SETUP_KEY)==='1';
+    try{
+      const data=await exchangeDriveLoginTicket(code);
+      await saveSetting('driveBackupMode','auto');
+      state.hadStoredSettings=true;
+      let status=null;
+      try{status=await refreshDriveStatus()}catch(_){}
+      return {connected:true,firstSetup,status,data};
+    }catch(err){
+      console.error(err);
+      showToast(err.message||'Googleログインを完了できませんでした');
+      return {connected:false,error:err.message};
+    }finally{
+      try{localStorage.removeItem(DRIVE_FIRST_SETUP_KEY)}catch(_){}
+    }
+  }
+
+  async function refreshDriveStatus(){
+    const res=await driveApi('/api/drive/status');
+    const data=await res.json();
+    state.drive.user=data.user||state.drive.user;
+    state.drive.file=data.file||null;
+    state.drive.statusChecked=true;
+    state.drive.needsReconnect=false;
+    return data;
+  }
+
+  async function findDriveBackup(){
+    const data=await refreshDriveStatus();
+    return data.file||null;
   }
 
   async function buildPersonalBackup(includeImages=true){
@@ -2313,52 +2332,34 @@
       if(!silent) showToast('Google Driveはオンライン時に利用できます');
       return false;
     }
-    if(silent && !driveConnected()){
+    if(!driveConnected()){
       state.drive.needsReconnect=true;
+      if(!silent) showToast('Google Driveへログインしてください');
       return false;
     }
+
     state.drive.busy=true;
     try{
-      await requestDriveToken({prompt:driveConnected()?'':'consent'});
-      state.drive.needsReconnect=false;
-      driveReconnectToastShown=false;
-      let file=await findDriveBackup();
       const payload=await buildPersonalBackup(true);
-      const content=JSON.stringify(payload);
-      let res;
-
-      if(file?.id){
-        res=await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(file.id)}?uploadType=media&fields=id,name,modifiedTime,size`,{
-          method:'PATCH',
-          headers:{'Content-Type':'application/json; charset=UTF-8'},
-          body:content
-        });
-      }else{
-        const boundary=`maanote_${Date.now()}`;
-        const metadata=JSON.stringify({name:DRIVE_FILE_NAME,parents:['appDataFolder'],mimeType:'application/json'});
-        const multipart=[
-          `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
-          `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${content}\r\n`,
-          `--${boundary}--`
-        ].join('');
-        res=await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime,size',{
-          method:'POST',
-          headers:{'Content-Type':`multipart/related; boundary=${boundary}`},
-          body:multipart
-        });
-      }
-
-      state.drive.file=await res.json();
+      const res=await driveApi('/api/drive/backup',{
+        method:'PUT',
+        headers:{'Content-Type':'application/json; charset=UTF-8'},
+        body:JSON.stringify(payload)
+      });
+      const data=await res.json();
+      state.drive.file=data.file||state.drive.file;
+      state.drive.user=data.user||state.drive.user;
       clearDriveBackupDirty();
       await saveSetting('driveLastBackupAt',new Date().toISOString());
       state.drive.error=null;
+      state.drive.needsReconnect=false;
       if(state.screen==='settings') renderSettings();
       if(!silent) showToast('✓ Google Driveへバックアップしました');
       return true;
     }catch(err){
       console.error(err);
       state.drive.error=err.message;
-      state.drive.needsReconnect=!driveConnected();
+      if(err.status===401) state.drive.needsReconnect=true;
       if(!silent) showToast(err.message||'Google Driveへバックアップできませんでした');
       return false;
     }finally{
@@ -2366,81 +2367,57 @@
     }
   }
 
+  function driveReturnUrl(){
+    const u=new URL(location.href);
+    u.searchParams.delete('drive_auth');
+    u.searchParams.delete('drive_auth_error');
+    return u.href;
+  }
+
   async function connectDrive({enableAuto=false,firstSetup=false}={}){
     if(!DRIVE_SYNC_ENABLED){openSettingsInfo('driveSetup');return;}
     if(!navigator.onLine){showToast('Google Driveはオンライン時に利用できます');return;}
-    state.drive.busy=true;
+    if(enableAuto && state.settings.driveBackupMode!=='auto') await saveSetting('driveBackupMode','auto');
     try{
-      await requestDriveToken({prompt:'consent'});
-      state.drive.needsReconnect=false;
-      driveReconnectToastShown=false;
-      const file=await findDriveBackup();
-      state.drive.error=null;
-      if(enableAuto && state.settings.driveBackupMode!=='auto') await saveSetting('driveBackupMode','auto');
-
-      const localCount=meaningfulPersonalCount();
-      const hasPreviousLocalDrive=!!state.settings.driveLastBackupAt;
-
-      state.drive.busy=false;
-
-      if(file && firstSetup && !hasPreviousLocalDrive){
-        if(localCount===0){
-          await openDriveRestoreSheet();
-        }else{
-          showExistingDriveBackupChoice();
-        }
-        return;
-      }
-
-      if(!file || !hasPreviousLocalDrive){
-        try{localStorage.setItem(DRIVE_DIRTY_KEY,new Date().toISOString())}catch(_){}
-        await uploadDriveBackup({silent:true});
-      }else if(driveBackupDirty()){
-        scheduleAutoDriveBackup(600);
-      }
-
-      if(state.screen==='settings') renderSettings();
-      showToast('✓ Google Drive自動バックアップを有効にしました');
-    }catch(err){
-      state.drive.error=err.message;
-      state.drive.needsReconnect=true;
-      if(state.screen==='settings') renderSettings();
-      showToast(err.message||'Google Driveへ接続できませんでした');
-    }finally{
-      state.drive.busy=false;
-    }
+      if(firstSetup) localStorage.setItem(DRIVE_FIRST_SETUP_KEY,'1');
+      else localStorage.removeItem(DRIVE_FIRST_SETUP_KEY);
+    }catch(_){}
+    const target=`${API_BASE}/api/drive/auth/start?return_url=${encodeURIComponent(driveReturnUrl())}`;
+    location.assign(target);
   }
 
-  function disconnectDrive(){
-    const token=state.drive.accessToken;
-    const finish=async()=>{
-      state.drive.accessToken=null;
-      state.drive.expiresAt=0;
-      state.drive.tokenClient=null;
-      state.drive.file=null;
-      state.drive.error=null;
-      state.drive.needsReconnect=false;
-      clearTimeout(driveAutoTimer);
-      await saveSetting('driveBackupMode','local');
-      if(state.screen==='settings') renderSettings();
-      showToast('この端末だけに保存する設定へ変更しました');
-    };
-    if(token && globalThis.google?.accounts?.oauth2?.revoke){
-      try{google.accounts.oauth2.revoke(token,finish)}catch(_){finish()}
-    }else finish();
+  async function disconnectDrive(){
+    const token=driveSession();
+    if(token){
+      try{
+        await fetch(`${API_BASE}/api/drive/session`,{
+          method:'DELETE',
+          headers:{Authorization:`Bearer ${token}`}
+        });
+      }catch(_){}
+    }
+    saveDriveSession('');
+    state.drive.file=null;
+    state.drive.user=null;
+    state.drive.error=null;
+    state.drive.needsReconnect=false;
+    state.drive.statusChecked=false;
+    clearTimeout(driveAutoTimer);
+    await saveSetting('driveBackupMode','local');
+    if(state.screen==='settings') renderSettings();
+    showToast('この端末だけに保存する設定へ変更しました');
   }
 
   async function downloadDriveBackup(){
     if(!navigator.onLine){showToast('Google Driveはオンライン時に利用できます');return null;}
-    await requestDriveToken({prompt:driveConnected()?'':'consent'});
-    const file=await findDriveBackup();
-    if(!file?.id) throw new Error('Google DriveにMaaNoteのバックアップがありません');
-    const res=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media`);
-    const payload=await res.json();
-    if(payload?.format!=='MaaNote-export' || !Array.isArray(payload.userEventPlans)){
+    const res=await driveApi('/api/drive/backup');
+    const data=await res.json();
+    if(!data?.backup || data.backup.format!=='MaaNote-export' || !Array.isArray(data.backup.userEventPlans)){
       throw new Error('MaaNoteのバックアップとして読み込めません');
     }
-    return payload;
+    state.drive.file=data.file||state.drive.file;
+    state.drive.user=data.user||state.drive.user;
+    return data.backup;
   }
 
   async function importPersonalBackup(payload){
@@ -2592,7 +2569,7 @@
         <section class="card settings-card">
           <div class="settings-status-row"><span><strong>保存方法</strong><small>普段の入力はまず端末へ保存されます</small></span><b>${state.settings.driveBackupMode==='auto'?'Google Drive自動':'この端末だけ'}</b></div>
           ${state.settings.driveBackupMode==='auto'?`
-            <div class="settings-status-row"><span><strong>自動バックアップ</strong><small>${state.drive.needsReconnect?'再接続すると自動で再開します':driveBackupDirty()?'次回オンライン時に自動保存':'変更時に自動保存'}</small></span><b class="${driveConnected()?'ok':''}">${!DRIVE_SYNC_ENABLED?'設定待ち':driveConnected()?'接続中':state.drive.needsReconnect?'要再接続':'待機中'}</b></div>
+            <div class="settings-status-row"><span><strong>自動バックアップ</strong><small>${state.drive.needsReconnect?'Googleで再ログインしてください':driveBackupDirty()?'次回オンライン時に自動保存':'変更時に自動保存'}</small></span><b class="${driveConnected()?'ok':''}">${!DRIVE_SYNC_ENABLED?'設定待ち':driveConnected()?'接続中':state.drive.needsReconnect?'要ログイン':'待機中'}</b></div>
             <div class="settings-status-row"><span><strong>最終バックアップ</strong><small>MaaNote専用のDrive領域</small></span><b>${state.drive.file?.modifiedTime?new Date(state.drive.file.modifiedTime).toLocaleDateString('ja-JP'):state.settings.driveLastBackupAt?new Date(state.settings.driveLastBackupAt).toLocaleDateString('ja-JP'):'—'}</b></div>
           `:''}
           ${!DRIVE_SYNC_ENABLED
@@ -2600,11 +2577,11 @@
             :state.settings.driveBackupMode!=='auto'
               ?`<button class="settings-nav-row" data-drive-enable-auto><span><strong>Google Driveに自動バックアップ</strong><small>初回だけGoogleアカウントを選択</small></span><span class="chev">›</span></button>`
               :!driveConnected()
-                ?`<button class="settings-nav-row" data-drive-connect><span><strong>Google Driveに再接続</strong><small>接続後は自動バックアップに戻ります</small></span><span class="chev">›</span></button>`
+                ?`<button class="settings-nav-row" data-drive-connect><span><strong>Googleで再ログイン</strong><small>通常は初回ログイン後、そのまま接続を維持します</small></span><span class="chev">›</span></button>`
                 :`<button class="settings-nav-row" data-drive-backup><span><strong>今すぐバックアップ</strong><small>通常は押さなくても自動保存されます</small></span><span class="chev">›</span></button>
                   <button class="settings-nav-row" data-drive-restore><span><strong>Google Driveから復元</strong><small>端末変更・データ復旧用</small></span><span class="chev">›</span></button>
                   <button class="settings-nav-row" data-drive-disconnect><span><strong>この端末だけに保存する</strong><small>Drive上の既存バックアップは削除しません</small></span><span class="chev">›</span></button>`}
-          <div class="drive-sync-note">Google Driveを選んだ場合、最初の接続後はCD・TODO・旅程などの変更を自動でバックアップします。Googleの認証期限などで再接続が必要になることがあります。</div>
+          <div class="drive-sync-note">Google Driveを選んだ場合、初回にGoogleアカウントを選ぶと、その後はCD・TODO・旅程などの変更を自動バックアップします。Googleの短いアクセストークン更新はMaaNote側で処理するため、通常は再ログイン不要です。</div>
         </section>
 
         <div class="settings-section-title">ヘルプ・情報</div>
@@ -2676,7 +2653,7 @@
     const map={
       offline:['オフラインでできること','一度オンラインでMaaNoteを読み込んだ後は、ホーム・イベント・予定・TODO・旅程・セトリ・話したいことメモ・集計を端末保存データで確認できます。圏外でも入力内容は端末へ保存されます。公式ページ、地図、Google Driveバックアップなど通信が必要な機能はオンライン時のみ利用できます。'],
       privacy:['データの取り扱い','個人データはこの端末のIndexedDBを基本保存先にします。Google Driveを接続した場合だけ、MaaNote専用バックアップをGoogle Driveのアプリ専用データ領域へ保存します。Drive内の通常ファイルを一覧表示・読み取りする権限は要求しません。'],
-      driveSetup:['Google Drive連携の設定','Google CloudでDrive APIを有効にし、OAuth Web Client IDをruntime-config.jsの GOOGLE_CLIENT_ID に設定して DRIVE_SYNC_ENABLED を true にすると利用できます。設定後、利用者は初回にGoogleアカウントを1回選ぶだけで、以後の変更は自動バックアップされます。'],
+      driveSetup:['Google Drive連携の設定','Google CloudのDrive APIとCloudflare Worker側のOAuth設定を有効にし、runtime-config.jsの API_BASE と DRIVE_SYNC_ENABLED を設定すると利用できます。利用者は初回にGoogleアカウントを選ぶだけで、以後の変更は自動バックアップされます。'],
       unofficial:['非公式アプリについて','MaaNoteは非公式のファン向けアプリです。佐藤優樹さん、所属事務所、レコード会社、イベント主催者・会場とは関係ありません。情報の反映・訂正に時間がかかる場合があります。イベント参加前には必ず公式サイト・公式SNS等で最新情報をご確認ください。']
     };
     const [title,body]=map[kind]||['情報','']; showSheet(`<div class="sheet-head"><div class="sheet-title">${escapeHTML(title)}</div><button class="text-btn" data-sheet-close>閉じる</button></div><div class="settings-info-text">${escapeHTML(body)}</div>`);
@@ -2773,10 +2750,28 @@
   async function boot(){
     try { await initData(); }
     catch(err){ console.error(err); state.userPlans={}; showToast('端末保存の初期化に失敗しました'); }
+    let driveAuthResult=null;
+    if(!IS_VIEW_BUILD && DRIVE_SYNC_ENABLED){
+      try{driveAuthResult=await handleDriveAuthReturn()}catch(err){console.warn('Drive auth return failed',err)}
+    }
     render();
     if(!IS_VIEW_BUILD && DRIVE_SYNC_ENABLED){
-      setTimeout(()=>{
-        if(shouldShowNewDeviceLogin()) showStartupLoginGate();
+      setTimeout(async()=>{
+        if(driveAuthResult?.connected){
+          const hasBackup=!!driveAuthResult.status?.file;
+          const localCount=meaningfulPersonalCount();
+          if(hasBackup && driveAuthResult.firstSetup){
+            if(localCount===0) await openDriveRestoreSheet();
+            else showExistingDriveBackupChoice();
+          }else if(!hasBackup){
+            try{localStorage.setItem(DRIVE_DIRTY_KEY,new Date().toISOString())}catch(_){}
+            scheduleAutoDriveBackup(500);
+            showToast('✓ Googleログインが完了しました');
+          }else{
+            await resumeAutoDriveBackup();
+            showToast('✓ Googleログインが完了しました');
+          }
+        }else if(shouldShowNewDeviceLogin()) showStartupLoginGate();
         else if(state.settings.driveBackupMode==='auto') resumeAutoDriveBackup();
         else maybeOfferBackupChoice();
       },350);

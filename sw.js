@@ -1,4 +1,4 @@
-const CACHE = 'maanote-PROD-v0.9-stage14.1-20261005';
+const CACHE = 'maanote-PROD-v0.9-stage15-20261005';
 const APP_SHELL = [
   './',
   './index.html',
@@ -8,8 +8,8 @@ const APP_SHELL = [
   './view/manifest.webmanifest',
   './admin/',
   './admin/index.html',
-  './styles.css?v=0.9-stage14.1-prod',
-  './app.js?v=0.9-stage14.1-prod',
+  './styles.css?v=0.9-stage15-prod',
+  './app.js?v=0.9-stage15-prod',
   './manifest.webmanifest',
   './icon.svg',
   './icon-192.png',
@@ -17,13 +17,13 @@ const APP_SHELL = [
   './apple-touch-icon.png',
   './version.json',
   './admin.html',
-  './admin.css?v=0.9-stage14-prod',
-  './admin.js?v=0.9-stage14-prod',
+  './admin.css?v=0.9-stage15-prod',
+  './admin.js?v=0.9-stage15-prod',
   './common-seed.json',
   './common-data.json',
   './migrate-v96.html',
-  './migrate-v96.css?v=0.9-stage14-prod',
-  './migrate-v96.js?v=0.9-stage14-prod'
+  './migrate-v96.css?v=0.9-stage15-prod',
+  './migrate-v96.js?v=0.9-stage15-prod'
 ];
 
 self.addEventListener('install', event => {

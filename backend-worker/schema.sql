@@ -26,3 +26,37 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at);
+
+CREATE TABLE IF NOT EXISTS drive_users (
+  google_sub TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  refresh_token_enc TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS drive_oauth_states (
+  state_hash TEXT PRIMARY KEY,
+  return_url TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS drive_login_tickets (
+  ticket_hash TEXT PRIMARY KEY,
+  google_sub TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS drive_sessions (
+  session_hash TEXT PRIMARY KEY,
+  google_sub TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_drive_sessions_sub ON drive_sessions(google_sub);
+CREATE INDEX IF NOT EXISTS idx_drive_oauth_states_exp ON drive_oauth_states(expires_at);
+CREATE INDEX IF NOT EXISTS idx_drive_tickets_exp ON drive_login_tickets(expires_at);

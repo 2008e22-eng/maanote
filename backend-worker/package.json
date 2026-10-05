@@ -1,7 +1,7 @@
 {
   "name": "maanote-admin-api",
   "private": true,
-  "version": "0.9.12",
+  "version": "0.9.15",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

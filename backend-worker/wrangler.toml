@@ -16,3 +16,9 @@ ALLOWED_ORIGINS = "https://2008e22-eng.github.io"
 GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID"
 # Initial owner. This account can add/disable later admins.
 OWNER_EMAIL = "REPLACE_WITH_OWNER_EMAIL"
+# Production personal app URL used as OAuth fallback return target.
+APP_RETURN_URL = "https://2008e22-eng.github.io/maanote/"
+
+# Secrets (do NOT put values in this file):
+# npx wrangler secret put GOOGLE_CLIENT_SECRET
+# npx wrangler secret put DRIVE_TOKEN_KEY

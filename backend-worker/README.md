@@ -1,55 +1,69 @@
-# MaaNote Stage 12 Admin API
+# MaaNote Stage 15 Backend
 
-Googleログイン、管理者の追加・停止、①見るだけ版＋②入力版への自動配信を担当するCloudflare Workerです。
+Stage 15ではGoogle Driveバックアップの認証をブラウザ直結方式から、
+Cloudflare Worker経由のサーバーOAuthへ変更します。
 
-## 1. Google OAuth
-Google Cloud Consoleで「Web application」のOAuthクライアントIDを作成します。
+## 目的
+Googleの短時間アクセストークンをブラウザへ長期保存しません。
+初回Google認証で取得したrefresh tokenをWorker側で暗号化保存し、
+以後はWorkerが必要に応じてGoogleのaccess tokenを更新します。
 
-現在のGitHub Pagesを使う場合、Authorized JavaScript origins に:
+利用者は通常、最初のGoogleログインだけで済みます。
 
+## 必要なGoogle Cloud設定
+OAuth Web Clientに次を追加します。
+
+### Authorized JavaScript origin
 https://2008e22-eng.github.io
 
-を登録します。
+### Authorized redirect URI
+Workerをdeployした後のURL:
+https://<あなたのWorker>.workers.dev/api/drive/oauth/callback
 
-## 2. Cloudflare D1
-このフォルダで:
+Google Drive APIを有効化し、OAuth Data Accessに:
+https://www.googleapis.com/auth/drive.appdata
+を追加してください。
 
-npm install
-npx wrangler d1 create maanote-admin-db
-
-表示された database_id を `wrangler.toml` に入れます。
-
-次に:
+## D1更新
+既存DBに対してもう一度schema.sqlを実行します。
 
 npx wrangler d1 execute maanote-admin-db --remote --file=./schema.sql
 
-## 3. wrangler.toml
-以下を設定します。
+CREATE TABLE IF NOT EXISTSなので既存の管理者データ・配信データは消しません。
 
-- `GOOGLE_CLIENT_ID`: Google OAuth Web Client ID
-- `OWNER_EMAIL`: 最初のオーナーのGoogleアカウント
-- `ALLOWED_ORIGINS`: 現在は `https://2008e22-eng.github.io`
+## Secrets
+Google CloudのOAuth Client Secret:
+npx wrangler secret put GOOGLE_CLIENT_SECRET
 
-## 4. Deploy
+refresh token暗号化用32-byte keyを作成:
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+表示された値を:
+npx wrangler secret put DRIVE_TOKEN_KEY
+
+へ設定します。
+
+## Deploy
 npx wrangler deploy
 
-表示されたWorker URL（例: `https://maanote-admin-api.xxxxx.workers.dev`）を控えます。
+deploy後のWorker URLをGoogle CloudのAuthorized redirect URIへ登録してください。
 
-## 5. MaaNote側
-ルートの `runtime-config.js` を:
+## runtime-config.js
+本番maanote側:
 
 window.MAANOTE_CONFIG = Object.freeze({
-  API_BASE: "https://maanote-admin-api.xxxxx.workers.dev",
-  GOOGLE_CLIENT_ID: "xxxxxxxx.apps.googleusercontent.com",
-  ADMIN_AUTH_ENABLED: true
+  ENV: "production",
+  API_BASE: "https://<あなたのWorker>.workers.dev",
+  GOOGLE_CLIENT_ID: "<現在の正しいClient ID>",
+  ADMIN_AUTH_ENABLED: false,
+  DRIVE_SYNC_ENABLED: true
 });
 
-に変更してGitHubへPushします。
+ADMIN_AUTH_ENABLEDは管理者ログインの準備が終わるまでfalseのままで構いません。
 
-## 動作
-- ③ `/admin/` はGoogleログイン必須
-- `OWNER_EMAIL` は自動的にオーナー
-- オーナーは管理者タブから後でメンバーを追加／停止できる
-- 通常管理者はイベント編集・公開ができる
-- 公開時はD1へ保存され、① `/view/` と② `/` が同じ `/api/common-data` を取得する
-- 同時編集時はバージョン競合を検知し、古い画面からの上書きを拒否する
+## セキュリティ
+- Google refresh tokenはブラウザへ返しません。
+- D1にはAES-GCMで暗号化して保存します。
+- ブラウザにはMaaNote専用のランダムなセッショントークンのみ保存します。
+- セッションは利用中なら期限を延長します。
+- Drive権限はdrive.appdataだけです。
