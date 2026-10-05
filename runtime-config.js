@@ -4,7 +4,7 @@
 window.MAANOTE_CONFIG = Object.freeze({
   ENV: "production",
   API_BASE: "",
-  GOOGLE_CLIENT_ID: "983518832862-81o2lp171kb77plp4j9melibnh23pm5g.apps.googleusercontent.com",
+  GOOGLE_CLIENT_ID: "983518832862-81o2lp171kb77plp4j9melibnh23pm5q.apps.googleusercontent.com",
   ADMIN_AUTH_ENABLED: false,
   DRIVE_SYNC_ENABLED: true
 });
