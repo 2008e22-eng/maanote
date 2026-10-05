@@ -1,4 +1,4 @@
-const CACHE = 'maanote-PROD-v0.9-stage15-20261005';
+const CACHE = 'maanote-PROD-v0.9-stage15-migration1-20261005';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,7 +9,7 @@ const APP_SHELL = [
   './admin/',
   './admin/index.html',
   './styles.css?v=0.9-stage15-prod',
-  './app.js?v=0.9-stage15-prod',
+  './app.js?v=0.9-stage15-migration1',
   './manifest.webmanifest',
   './icon.svg',
   './icon-192.png',

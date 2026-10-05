@@ -1,1 +1,1 @@
-{"version": "0.9-stage15-prod", "build": "2026-10-05.stage15-prod", "environment": "production", "note": "server-managed Google Drive OAuth refresh token"}
+{"version":"0.9-stage15-migration1","build":"2026-10-05.stage15-migration1","environment":"production","note":"one-time secure migration from masaki_trip_webapp_v9_6_0 Firebase"}

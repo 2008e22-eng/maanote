@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.9-stage15-prod';
-  const APP_VERSION_LABEL = 'v0.9 Stage 15 PROD';
+  const APP_VERSION = '0.9-stage15-migration1';
+  const APP_VERSION_LABEL = 'v0.9 Stage 15 + v9.6 Migration';
   const CONFIG = globalThis.MAANOTE_CONFIG || {};
   const API_BASE = String(CONFIG.API_BASE||'').replace(/\/$/,'');
   const IS_VIEW_BUILD = location.pathname.includes('/view/');
@@ -2077,6 +2077,11 @@
           <span><strong>Googleでログイン</strong><small>データを引き継ぐ・自動バックアップ</small></span>
         </button>
 
+        <button class="startup-login-secondary" data-startup-legacy>
+          <strong>旧アプリからデータを引き継ぐ</strong>
+          <small>v9.6.0 のメールアドレス＋パスワードで本人確認</small>
+        </button>
+
         <div class="startup-login-divider"><span>または</span></div>
 
         <button class="startup-login-secondary" data-startup-new>
@@ -2115,6 +2120,8 @@
         }
       }
     };
+
+    sheetRoot.querySelector('[data-startup-legacy]').onclick=()=>openLegacyMigrationSheet();
 
     sheetRoot.querySelector('[data-startup-new]').onclick=async()=>{
       await saveSetting('mode','personal_management');
@@ -2495,6 +2502,197 @@
     }
   }
 
+
+
+  // --- v9.6.0 Firebase one-time migration ---------------------------------
+  const LEGACY_FIREBASE_CONFIG={
+    apiKey:'AIzaSyAZbbQ78H_xcCoxywH-WgELouW9sLBIUFw',
+    authDomain:'masaki-3rd-trip.firebaseapp.com',
+    projectId:'masaki-3rd-trip',
+    storageBucket:'masaki-3rd-trip.firebasestorage.app',
+    messagingSenderId:'9739362275',
+    appId:'1:9739362275:web:2af67de2546d90e0920ad6'
+  };
+  const LEGACY_EVENT_ID_MAP={
+    '2026-11-02-makuhari':'release-20261102-chiba',
+    '2026-11-08-kanazawa':'release-20261108-ishikawa',
+    '2026-11-15-kinshicho':'release-20261115-tokyo',
+    '2026-11-21-sapporo':'release-20261121-hokkaido',
+    '2026-11-23-nagoya':'release-20261123-aichi',
+    '2026-11-28-hiroshima':'release-20261128-hiroshima',
+    '2026-12-06-hakata':'release-20261206-fukuoka',
+    '2026-12-15-ikebukuro':'release-20261215-tokyo',
+    '2026-12-19-kobe':'release-20261219-hyogo'
+  };
+  let legacyFirebasePromise=null;
+  let legacyMigrationSession=null;
+
+  function legacyEventId(oldId){return LEGACY_EVENT_ID_MAP[oldId]||oldId||null;}
+  function legacyDateTime(raw){
+    const v=String(raw||'').trim(); if(!v)return {date:null,time:null};
+    const [d,t='']=v.split('T'); return {date:d||null,time:t?t.slice(0,5):null};
+  }
+  function legacyPaymentStatus(b){
+    if(b?.paymentPending)return 'unpaid';
+    if(b?.paymentCompletedOn)return 'paid';
+    return 'unset';
+  }
+  function legacyBookingStatus(b){return b?.cancelCompletedOn?'cancelled':'confirmed';}
+  function legacyCdQuantity(rec){
+    const pools=(rec?.cdManageByRound&&Array.isArray(rec?.cdByRound)&&rec.cdByRound.length)
+      ?rec.cdByRound.map(x=>x?.cdPurchases||x?.purchases||{})
+      :[rec?.cdPurchases||{}];
+    let bought=0, planned=0;
+    for(const pool of pools){for(const v of Object.values(pool||{})){bought+=Number(v?.bought||0)||0;planned+=Number(v?.planned||0)||0;}}
+    return bought||planned||null;
+  }
+  function legacyParts(rec){
+    const out={};
+    for(const x of (Array.isArray(rec?.serialEntries)?rec.serialEntries:[])){
+      const r=String(x?.round||'');
+      const n=r.includes('1')||r.includes('①')?'p1':r.includes('2')||r.includes('②')?'p2':r.includes('3')||r.includes('③')?'p3':null;
+      if(!n)continue;
+      const num=String(x?.number??'').match(/\d+/)?.[0];
+      out[n]={...(out[n]||{}),priorityNumber:num?Number(num):null};
+    }
+    return out;
+  }
+  function legacyMigrationError(err){
+    const code=err?.code||'';
+    if(['auth/invalid-credential','auth/wrong-password','auth/user-not-found'].includes(code)) return '旧アプリのメールアドレスまたはパスワードが違います。';
+    if(code==='auth/too-many-requests') return 'ログイン試行が多いため一時的に制限されています。時間を置いて再度お試しください。';
+    if(code==='auth/invalid-email') return 'メールアドレスの形式を確認してください。';
+    if(code==='auth/network-request-failed') return '通信できませんでした。オンラインで再度お試しください。';
+    return err?.message||'旧アプリのデータを読み込めませんでした。';
+  }
+  async function legacyFirebase(){
+    if(legacyFirebasePromise)return legacyFirebasePromise;
+    legacyFirebasePromise=(async()=>{
+      const [fa,au,fs]=await Promise.all([
+        import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js'),
+        import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js')
+      ]);
+      let app;
+      try{app=fa.getApp('maanote-v96-migration');}catch(_){app=fa.initializeApp(LEGACY_FIREBASE_CONFIG,'maanote-v96-migration');}
+      return {app,auth:au.getAuth(app),db:fs.getFirestore(app),au,fs};
+    })();
+    return legacyFirebasePromise;
+  }
+  async function fetchLegacyFirebaseData(email,password){
+    const fb=await legacyFirebase();
+    try{if(fb.auth.currentUser)await fb.au.signOut(fb.auth);}catch(_){ }
+    const cred=await fb.au.signInWithEmailAndPassword(fb.auth,email,password);
+    const uid=cred.user.uid;
+    const [eventSnap,prefSnap,todoSnap,talkSnap]=await Promise.all([
+      fb.fs.getDocs(fb.fs.collection(fb.db,'users',uid,'events')),
+      fb.fs.getDoc(fb.fs.doc(fb.db,'users',uid,'settings','preferences')),
+      fb.fs.getDocs(fb.fs.collection(fb.db,'users',uid,'todos')),
+      fb.fs.getDocs(fb.fs.collection(fb.db,'users',uid,'talkMemos'))
+    ]);
+    const events=eventSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const imageIds=[...new Set(events.flatMap(e=>(e.bookings||[]).map(b=>b?.imageId).filter(Boolean)))];
+    const imagePairs=await Promise.all(imageIds.map(async id=>{
+      try{const snap=await fb.fs.getDoc(fb.fs.doc(fb.db,'users',uid,'bookingImages',id));return [id,snap.exists()?snap.data():null];}catch(_){return [id,null];}
+    }));
+    return {fb,uid,email:cred.user.email||email,events,prefs:prefSnap.exists()?prefSnap.data():{},todos:todoSnap.docs.map(d=>({id:d.id,...d.data()})),talkMemos:talkSnap.docs.map(d=>({id:d.id,...d.data()})),images:Object.fromEntries(imagePairs)};
+  }
+  function legacySummary(data){
+    const bookings=data.events.reduce((n,e)=>n+(Array.isArray(e.bookings)?e.bookings.length:0),0);
+    const attending=data.events.filter(e=>e.attending).length;
+    const images=Object.values(data.images||{}).filter(x=>x?.dataUrl).length;
+    return {events:data.events.length,attending,bookings,todos:data.todos.length,talk:data.talkMemos.length,images};
+  }
+  async function importLegacyFirebaseData(data){
+    const now=new Date().toISOString();
+    let planCount=0,travelCount=0,todoCount=0,talkCount=0;
+    for(const rec of data.events){
+      const eventId=legacyEventId(rec.id);
+      const existing=state.userPlans[eventId];
+      const parts={...(existing?.parts||{}),...legacyParts(rec)};
+      const hasMeaningful=!!rec.attending || legacyCdQuantity(rec)!=null || Object.keys(parts).length>0;
+      if(hasMeaningful){
+        const next={eventId,participationStatus:rec.attending?'confirmed':(existing?.participationStatus||'unset'),cdQuantity:legacyCdQuantity(rec)??existing?.cdQuantity??null,parts,createdAt:existing?.createdAt||rec.updatedAt||now,updatedAt:now,revision:(existing?.revision||0)+1,deleted:false};
+        await idbPut('userEventPlans',next); state.userPlans[eventId]=next; planCount++;
+      }
+      for(const b of (Array.isArray(rec.bookings)?rec.bookings:[])){
+        const start=legacyDateTime(b.start), end=legacyDateTime(b.end);
+        const oldImage=data.images?.[b.imageId];
+        const images=oldImage?.dataUrl?[{id:`legacy-${b.imageId}`,name:'旧アプリの予約画像',dataUrl:oldImage.dataUrl,createdAt:oldImage.updatedAt||now}]:[];
+        const item={
+          id:`legacy-v96-${b.id||b.imageId||uid('booking')}`,eventId,type:b.type||'other',direction:b.type==='hotel'?'stay':(b.direction||'none'),title:b.title||'',
+          date:start.date||rec.event?.date||null,startTime:start.time,endDate:end.date||start.date||null,endTime:end.time,from:b.from||null,to:b.to||null,seat:b.seat||null,
+          bookingSite:null,bookingCode:b.code||null,reservedOn:b.reservedOn||null,partySize:null,cost:b.cost===''||b.cost==null?null:Number(b.cost),paymentStatus:legacyPaymentStatus(b),bookingStatus:legacyBookingStatus(b),paymentDue:b.paymentDue||null,freeCancelUntil:b.freeCancelUntil||null,url:b.url||null,notes:b.notes||null,images,
+          createdAt:b.createdAt||rec.updatedAt||now,updatedAt:now,revision:1,deleted:false,legacySourceId:b.id||null
+        };
+        await idbPut('travelBookings',item); state.travelBookings=state.travelBookings.filter(x=>x.id!==item.id); state.travelBookings.push(item); travelCount++;
+      }
+      await idbPut('legacyData',{id:`event:${rec.id}`,source:'masaki_trip_webapp_v9_6_0',oldId:rec.id,newEventId:eventId,data:structuredClone(rec),importedAt:now});
+    }
+    for(const t of data.todos){
+      const item={id:`legacy-v96-${t.id}`,title:t.title||'',eventId:legacyEventId(t.eventId),dueDate:t.deadline||null,dueTime:null,memo:null,completed:!!t.completed,completedAt:t.completed? t.updatedAt||now:null,showOnCalendar:true,createdBy:'legacy_v96',sortOrder:Date.parse(t.createdAt||'')||Date.now(),createdAt:t.createdAt||now,updatedAt:now,revision:1,deleted:false};
+      await idbPut('todos',item); state.todos=state.todos.filter(x=>x.id!==item.id); state.todos.push(item); todoCount++;
+    }
+    for(const m of data.talkMemos){
+      const text=[m.topic||'',m.reply?`返事・反応：${m.reply}`:''].filter(Boolean).join('\n');
+      const item={id:`legacy-v96-${m.id}`,eventId:null,partId:null,text,completed:!!m.completed,createdAt:m.createdAt||now,updatedAt:now,revision:1,deleted:false};
+      await idbPut('talkMemos',item); state.talkMemos=state.talkMemos.filter(x=>x.id!==item.id); state.talkMemos.push(item); talkCount++;
+    }
+    await idbPut('legacyData',{id:'preferences',source:'masaki_trip_webapp_v9_6_0',data:structuredClone(data.prefs||{}),importedAt:now});
+    await idbPut('migrationInfo',{id:'masaki-v960-firebase',source:'masaki_trip_webapp_v9_6_0',sourceUid:data.uid,sourceEmail:data.email,importedAt:now,counts:{plans:planCount,travel:travelCount,todos:todoCount,talkMemos:talkCount}});
+    await saveSetting('mode','personal_management');
+    try{localStorage.setItem(DRIVE_DIRTY_KEY,now);}catch(_){ }
+    scheduleEmergencyBackup();
+    return {plans:planCount,travel:travelCount,todos:todoCount,talkMemos:talkCount};
+  }
+  async function finishLegacySession(){
+    const s=legacyMigrationSession; legacyMigrationSession=null;
+    try{if(s?.fb?.auth?.currentUser)await s.fb.au.signOut(s.fb.auth);}catch(_){ }
+  }
+  async function openLegacyMigrationSheet(){
+    if(IS_VIEW_BUILD)return;
+    const migrated=(await idbGetAll('migrationInfo').catch(()=>[])).find(x=>x.id==='masaki-v960-firebase');
+    showSheet(`<div class="sheet-head"><div class="sheet-title">旧アプリから引き継ぐ</div><button class="text-btn" data-legacy-close>閉じる</button></div>
+      ${migrated?`<div class="settings-info-text">この端末では ${escapeHTML(new Date(migrated.importedAt).toLocaleString('ja-JP'))} に一度引き継ぎ済みです。再実行すると同じIDの項目は更新されます。</div>`:''}
+      <div class="settings-info-text">旧「まーちゃん遠征まとめ v9.6.0」のFirebaseに本人としてログインし、あなた自身のデータだけを読み込みます。旧側のデータは変更・削除しません。</div>
+      <div class="form-group"><label class="form-label">旧アプリのメールアドレス</label><input class="form-input" type="email" autocomplete="username" data-legacy-email></div>
+      <div class="form-group"><label class="form-label">旧アプリのパスワード</label><input class="form-input" type="password" autocomplete="current-password" data-legacy-password></div>
+      <button class="sheet-card-btn primary full-width-btn" data-legacy-check>データを確認する</button>
+      <div class="form-help" data-legacy-status>メールアドレスだけではFirestoreを読めないため、初回引き継ぎ時だけ旧アプリのパスワードで本人確認します。パスワードはMaaNoteに保存しません。</div>`);
+    const close=async()=>{await finishLegacySession();closeSheet();};
+    sheetRoot.querySelector('[data-legacy-close]').onclick=close;
+    const btn=sheetRoot.querySelector('[data-legacy-check]');
+    btn.onclick=async()=>{
+      if(!navigator.onLine){showToast('引き継ぎはオンライン時に利用できます');return;}
+      const email=sheetRoot.querySelector('[data-legacy-email]').value.trim(); const password=sheetRoot.querySelector('[data-legacy-password]').value;
+      if(!email||!password){sheetRoot.querySelector('[data-legacy-status]').textContent='メールアドレスとパスワードを入力してください。';return;}
+      btn.disabled=true; btn.textContent='旧データを確認中…';
+      try{
+        const data=await fetchLegacyFirebaseData(email,password); legacyMigrationSession=data;
+        const c=legacySummary(data);
+        showSheet(`<div class="sheet-head"><div class="sheet-title">引き継ぐ内容を確認</div><button class="text-btn" data-legacy-cancel>戻る</button></div>
+          <div class="settings-info-text"><strong>${escapeHTML(data.email||email)}</strong> の旧アプリデータが見つかりました。</div>
+          <section class="card settings-card">
+            <div class="settings-status-row"><span><strong>保存済みイベント</strong><small>参加予定など</small></span><b>${c.events}件</b></div>
+            <div class="settings-status-row"><span><strong>参加予定</strong><small>MaaNoteの参加確定へ変換</small></span><b>${c.attending}件</b></div>
+            <div class="settings-status-row"><span><strong>宿泊・交通・食事</strong><small>旅程へ変換</small></span><b>${c.bookings}件</b></div>
+            <div class="settings-status-row"><span><strong>TODO</strong></span><b>${c.todos}件</b></div>
+            <div class="settings-status-row"><span><strong>トークメモ</strong></span><b>${c.talk}件</b></div>
+            <div class="settings-status-row"><span><strong>予約画像</strong></span><b>${c.images}件</b></div>
+          </section>
+          <div class="form-help">CD購入情報・整理番号など、MaaNoteへ直接対応できない元データも legacyData に原文のまま保存します。旧Firestore側は読み取りだけで変更しません。</div>
+          <button class="sheet-card-btn primary full-width-btn" data-legacy-import>このデータを引き継ぐ</button>`);
+        sheetRoot.querySelector('[data-legacy-cancel]').onclick=async()=>{await finishLegacySession();openLegacyMigrationSheet();};
+        sheetRoot.querySelector('[data-legacy-import]').onclick=async e=>{
+          const ib=e.currentTarget; ib.disabled=true; ib.textContent='引き継ぎ中…';
+          try{const counts=await importLegacyFirebaseData(data);await finishLegacySession();closeSheet();render();showToast(`✓ 引き継ぎ完了：旅程${counts.travel}件・TODO${counts.todos}件`);}
+          catch(err){console.error(err);ib.disabled=false;ib.textContent='このデータを引き継ぐ';showToast('引き継ぎ保存に失敗しました');}
+        };
+      }catch(err){console.error(err);await finishLegacySession();const status=sheetRoot.querySelector('[data-legacy-status]');if(status)status.textContent=legacyMigrationError(err);btn.disabled=false;btn.textContent='データを確認する';}
+    };
+  }
+  // -------------------------------------------------------------------------
+
   function renderSettings(){
     const h=state.settings.headerImage;
     const swReady=!!navigator.serviceWorker?.controller;
@@ -2565,6 +2763,12 @@
           <button class="settings-nav-row" data-export-data="all"><span><strong>画像込みで書き出す</strong><small>ファイルサイズが大きくなる場合があります</small></span><span class="chev">›</span></button>
         </section>
 
+        <div class="settings-section-title">データ引き継ぎ</div>
+        <section class="card settings-card">
+          <button class="settings-nav-row" data-legacy-migrate><span><strong>旧アプリから引き継ぐ</strong><small>v9.6.0 のFirebaseデータをこの端末へコピー</small></span><span class="chev">›</span></button>
+          <div class="drive-sync-note">旧アプリ側は読み取りのみです。引き継ぎ後も旧Firestoreのデータは残ります。</div>
+        </section>
+
         <div class="settings-section-title">バックアップ</div>
         <section class="card settings-card">
           <div class="settings-status-row"><span><strong>保存方法</strong><small>普段の入力はまず端末へ保存されます</small></span><b>${state.settings.driveBackupMode==='auto'?'Google Drive自動':'この端末だけ'}</b></div>
@@ -2633,6 +2837,7 @@
     if(file)file.onchange=async()=>{if(!file.files?.[0])return;const data=await resizeImage(file.files[0]);await saveSetting('headerImage',data);renderSettings();showToast('✓ ヘッダー画像を保存しました');};
     const del=document.querySelector('[data-delete-header]'); if(del)del.onclick=async()=>{if(!state.settings.headerImage)return;await saveSetting('headerImage',null);renderSettings();showToast('✓ ヘッダー画像を削除しました');};
     document.querySelectorAll('[data-export-data]').forEach(b=>b.onclick=()=>exportPersonalData(b.dataset.exportData==='all'));
+    document.querySelector('[data-legacy-migrate]')?.addEventListener('click',openLegacyMigrationSheet);
     document.querySelector('[data-drive-setup]')?.addEventListener('click',()=>openSettingsInfo('driveSetup'));
     document.querySelector('[data-drive-connect]')?.addEventListener('click',()=>connectDrive({enableAuto:true,firstSetup:false}));
     document.querySelector('[data-drive-enable-auto]')?.addEventListener('click',async()=>{await saveSetting('driveBackupMode','auto');await connectDrive({enableAuto:true,firstSetup:true});});
