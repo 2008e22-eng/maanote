@@ -1,0 +1,14 @@
+{
+  "name": "maanote-admin-api",
+  "private": true,
+  "version": "0.9.12",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create maanote-admin-db",
+    "db:init": "wrangler d1 execute maanote-admin-db --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

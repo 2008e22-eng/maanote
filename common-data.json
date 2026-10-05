@@ -1,0 +1,240 @@
+{
+  "format": "MaaNote-common-data",
+  "version": 1,
+  "publishMeta": {
+    "key": "publish",
+    "version": 2,
+    "updatedAt": "2026-10-02T20:00:00+09:00",
+    "summary": "3rdシングル発売記念イベント情報を10/2公式更新内容に合わせました"
+  },
+  "events": [
+    {
+      "id": "release-20261102-chiba",
+      "category": "release_event",
+      "date": "2026-11-02",
+      "prefecture": "千葉",
+      "venue": "イオンモール幕張新都心",
+      "venueDetail": null,
+      "nearestStations": [
+        {
+          "name": "幕張豊砂駅",
+          "walkMinutes": null
+        }
+      ],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "幕張"
+    },
+    {
+      "id": "release-20261108-ishikawa",
+      "category": "release_event",
+      "date": "2026-11-08",
+      "prefecture": "石川",
+      "venue": "金沢フォーラス",
+      "venueDetail": null,
+      "nearestStations": [
+        {
+          "name": "金沢駅",
+          "walkMinutes": null
+        }
+      ],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "金沢"
+    },
+    {
+      "id": "release-20261115-tokyo",
+      "category": "release_event",
+      "date": "2026-11-15",
+      "prefecture": "東京",
+      "venue": "タワーレコード錦糸町パルコ店",
+      "venueDetail": "店内イベントスペース",
+      "nearestStations": [
+        {
+          "name": "錦糸町駅",
+          "walkMinutes": 1
+        }
+      ],
+      "salesStart": "11:00",
+      "shipping": {
+        "type": "paid",
+        "amount": 950
+      },
+      "purchaseLimit": {
+        "count": 4,
+        "scope": "per_transaction"
+      },
+      "parts": [
+        {
+          "id": "p1",
+          "label": "1部",
+          "startTime": "14:00",
+          "priorityMeetTime": "13:40"
+        },
+        {
+          "id": "p2",
+          "label": "2部",
+          "startTime": "17:00",
+          "priorityMeetTime": "16:40"
+        }
+      ],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "錦糸町"
+    },
+    {
+      "id": "release-20261121-hokkaido",
+      "category": "release_event",
+      "date": "2026-11-21",
+      "prefecture": "北海道",
+      "venue": "サッポロファクトリー",
+      "venueDetail": null,
+      "nearestStations": [],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "札幌"
+    },
+    {
+      "id": "release-20261123-aichi",
+      "category": "release_event",
+      "date": "2026-11-23",
+      "prefecture": "愛知",
+      "venue": "エアポートウォーク名古屋",
+      "venueDetail": null,
+      "nearestStations": [],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "名古屋"
+    },
+    {
+      "id": "release-20261128-hiroshima",
+      "category": "release_event",
+      "date": "2026-11-28",
+      "prefecture": "広島",
+      "venue": "イオンモール広島府中",
+      "venueDetail": null,
+      "nearestStations": [],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "広島"
+    },
+    {
+      "id": "release-20261206-fukuoka",
+      "category": "release_event",
+      "date": "2026-12-06",
+      "prefecture": "福岡",
+      "venue": "キャナルシティ博多",
+      "venueDetail": null,
+      "nearestStations": [],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "博多"
+    },
+    {
+      "id": "release-20261215-tokyo",
+      "category": "release_event",
+      "date": "2026-12-15",
+      "prefecture": "東京",
+      "venue": "池袋・サンシャインシティ 噴水広場",
+      "venueDetail": null,
+      "nearestStations": [
+        {
+          "name": "池袋駅",
+          "walkMinutes": null
+        }
+      ],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "池袋"
+    },
+    {
+      "id": "release-20261219-hyogo",
+      "category": "release_event",
+      "date": "2026-12-19",
+      "prefecture": "兵庫",
+      "venue": "神戸ハーバーランド スペースシアター",
+      "venueDetail": null,
+      "nearestStations": [],
+      "salesStart": null,
+      "shipping": {
+        "type": "unpublished",
+        "amount": null
+      },
+      "purchaseLimit": null,
+      "parts": [],
+      "officialUrl": "https://www.jp-r.co.jp/masaki_satou/event/006feb74b8da455d4d8e8d30b5f54904965d113acebc5cffe84c79f8d2b7cc76/",
+      "status": "public",
+      "version": 2,
+      "updatedAt": "2026-10-02T20:00:00+09:00",
+      "calendarLabel": "神戸"
+    }
+  ],
+  "otherItems": [],
+  "history": [],
+  "exportedAt": "2026-10-04T00:00:00+09:00"
+}

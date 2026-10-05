@@ -1,0 +1,18 @@
+name = "maanote-admin-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# After `npx wrangler d1 create maanote-admin-db`,
+# replace the database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "maanote-admin-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+# Comma-separated browser origins allowed to call authenticated endpoints.
+ALLOWED_ORIGINS = "https://2008e22-eng.github.io"
+# Set the Google OAuth Web Client ID.
+GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_CLIENT_ID"
+# Initial owner. This account can add/disable later admins.
+OWNER_EMAIL = "REPLACE_WITH_OWNER_EMAIL"
