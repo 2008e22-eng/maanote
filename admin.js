@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const DB='MaaNoteProdAdminDB', LEGACY_DB='MaaNoteProdDB', DB_VERSION=7, APP_VERSION='0.9-stage14-prod', EMERGENCY_COMMON_KEY='MaaNoteProdAdminEmergencyCommonV1', ROOT_PREFIX=location.pathname.includes('/admin/')?'../':'./';
+  const DB='MaaNoteProdAdminDB', LEGACY_DB='MaaNoteProdDB', DB_VERSION=7, APP_VERSION='0.9-stage14.1-prod', EMERGENCY_COMMON_KEY='MaaNoteProdAdminEmergencyCommonV1', ROOT_PREFIX=location.pathname.includes('/admin/')?'../':'./';
   const app=document.getElementById('adminApp'), sheet=document.getElementById('adminSheet'), toast=document.getElementById('adminToast');
   const CONFIG=globalThis.MAANOTE_CONFIG||{};
   const API_BASE=String(CONFIG.API_BASE||'').replace(/\/$/,'');
@@ -113,7 +113,7 @@
   }
 
   function renderAuthGate(message=''){
-    app.innerHTML=`<main class="shell"><header class="top"><div><div class="brand">MaaNote Admin</div><div class="sub">管理者用 · Stage 14 PROD</div></div></header>
+    app.innerHTML=`<main class="shell"><header class="top"><div><div class="brand">MaaNote Admin</div><div class="sub">管理者用 · Stage 14.1 PROD</div></div></header>
       <div class="auth-card">
         <div class="auth-title">管理者ログイン</div>
         <div class="auth-copy">Googleアカウントでログインしてください。登録済みのオーナー／管理者だけが編集・公開できます。</div>
@@ -249,7 +249,7 @@
       ['history','履歴'],
       ...(SECURE_ADMIN&&state.auth.role==='owner'?[['admins','管理者']]:[])
     ];
-    return `<main class="shell"><header class="top"><div><div class="brand">MaaNote Admin</div><div class="sub">管理者用 · Stage 14 PROD</div></div><div class="top-actions">${SECURE_ADMIN?'':`<button class="app-link admin-export" data-export-common-global>配信用JSON</button>`}<a class="app-link" href="${ROOT_PREFIX}">入力版</a><a class="app-link" href="${ROOT_PREFIX}view/">見るだけ版</a></div></header>${authArea}${secureNote}<nav class="tabs">${tabs.map(([k,l])=>`<button data-tab="${k}" class="${state.tab===k?'active':''}">${l}</button>`).join('')}</nav><div class="content">${content}</div></main>`;
+    return `<main class="shell"><header class="top"><div><div class="brand">MaaNote Admin</div><div class="sub">管理者用 · Stage 14.1 PROD</div></div><div class="top-actions">${SECURE_ADMIN?'':`<button class="app-link admin-export" data-export-common-global>配信用JSON</button>`}<a class="app-link" href="${ROOT_PREFIX}">入力版</a><a class="app-link" href="${ROOT_PREFIX}view/">見るだけ版</a></div></header>${authArea}${secureNote}<nav class="tabs">${tabs.map(([k,l])=>`<button data-tab="${k}" class="${state.tab===k?'active':''}">${l}</button>`).join('')}</nav><div class="content">${content}</div></main>`;
   }
 
   function render(){

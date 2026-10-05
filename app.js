@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.9-stage14-prod';
-  const APP_VERSION_LABEL = 'v0.9 Stage 14 PROD';
+  const APP_VERSION = '0.9-stage14.1-prod';
+  const APP_VERSION_LABEL = 'v0.9 Stage 14.1 PROD';
   const CONFIG = globalThis.MAANOTE_CONFIG || {};
   const API_BASE = String(CONFIG.API_BASE||'').replace(/\/$/,'');
   const IS_VIEW_BUILD = location.pathname.includes('/view/');
